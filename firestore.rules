@@ -1,0 +1,171 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Reusable Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.uid is string && data.uid == userId && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 320
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudyNotes(notes) {
+      return notes is map
+        && notes.keys().hasAll(['executiveSummary', 'keyTakeaways', 'sections', 'glossary'])
+        && notes.keys().hasOnly(['executiveSummary', 'keyTakeaways', 'sections', 'glossary'])
+        && notes.executiveSummary is string && notes.executiveSummary.size() <= 12000
+        && notes.keyTakeaways is list && notes.keyTakeaways.size() <= 40
+        && (notes.keyTakeaways.size() == 0 || notes.keyTakeaways[0] is string)
+        && notes.sections is list && notes.sections.size() <= 100
+        && (notes.sections.size() == 0 || notes.sections[0] is map)
+        && notes.glossary is list && notes.glossary.size() <= 100
+        && (notes.glossary.size() == 0 || notes.glossary[0] is map);
+    }
+
+    function isValidQuizProgress(progress) {
+      return progress is map
+        && progress.keys().hasAll(['selectedAnswers', 'lastScore', 'bestScore', 'totalQuestions', 'attemptCount'])
+        && progress.keys().hasOnly(['selectedAnswers', 'lastScore', 'bestScore', 'totalQuestions', 'attemptCount', 'lastAttemptAt'])
+        && progress.selectedAnswers is list && progress.selectedAnswers.size() <= 30
+        && (progress.selectedAnswers.size() == 0 || progress.selectedAnswers[0] is int)
+        && progress.lastScore is int && progress.lastScore >= 0 && progress.lastScore <= 30
+        && progress.bestScore is int && progress.bestScore >= 0 && progress.bestScore <= 30
+        && progress.totalQuestions is int && progress.totalQuestions >= 1 && progress.totalQuestions <= 30
+        && progress.attemptCount is int && progress.attemptCount >= 0 && progress.attemptCount <= 100000
+        && (!('lastAttemptAt' in progress) || progress.lastAttemptAt is timestamp);
+    }
+
+    function isValidLecture(data, userId, lectureId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'videoId', 'youtubeUrl', 'title', 'channelName',
+          'thumbnailUrl', 'sourceType', 'transcriptSegments', 'studyNotes',
+          'flashcards', 'quizQuestions', 'quizProgress', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'videoId', 'youtubeUrl', 'title', 'channelName',
+          'thumbnailUrl', 'sourceType', 'durationSec', 'transcriptSegments', 'studyNotes',
+          'flashcards', 'quizQuestions', 'quizProgress', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id) && data.id == lectureId
+        && isValidId(data.ownerId) && data.ownerId == userId
+        && data.videoId is string && data.videoId.size() >= 1 && data.videoId.size() <= 32 && data.videoId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.youtubeUrl is string && data.youtubeUrl.size() >= 1 && data.youtubeUrl.size() <= 500
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 300
+        && data.channelName is string && data.channelName.size() >= 1 && data.channelName.size() <= 200
+        && data.thumbnailUrl is string && data.thumbnailUrl.size() <= 500
+        && data.sourceType in ['youtube_captions', 'manual_transcript']
+        && (!('durationSec' in data) || (data.durationSec is int && data.durationSec >= 0 && data.durationSec <= 172800))
+        && data.transcriptSegments is list && data.transcriptSegments.size() >= 1 && data.transcriptSegments.size() <= 800
+        && data.transcriptSegments[0] is map
+        && isValidStudyNotes(data.studyNotes)
+        && data.flashcards is list && data.flashcards.size() >= 1 && data.flashcards.size() <= 60
+        && data.flashcards[0] is map
+        && data.quizQuestions is list && data.quizQuestions.size() >= 1 && data.quizQuestions.size() <= 30
+        && data.quizQuestions[0] is map
+        && isValidQuizProgress(data.quizProgress)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data, userId, lectureId, messageId) {
+      return data.keys().hasAll(['id', 'ownerId', 'lectureId', 'role', 'content', 'timestampRefs', 'createdAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'lectureId', 'role', 'content', 'timestampRefs', 'createdAt'])
+        && isValidId(data.id) && data.id == messageId
+        && isValidId(data.ownerId) && data.ownerId == userId
+        && isValidId(data.lectureId) && data.lectureId == lectureId
+        && data.role in ['user', 'assistant']
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 8000
+        && data.timestampRefs is list && data.timestampRefs.size() <= 12
+        && (data.timestampRefs.size() == 0 || data.timestampRefs[0] is number)
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+      allow create: if isVerified() && isOwner(userId) && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isVerified() && isOwner(userId) && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoURL', 'updatedAt']);
+      allow delete: if false;
+
+      match /lectures/{lectureId} {
+        allow get: if isOwner(userId) && isValidId(userId) && isValidId(lectureId)
+          && (resource == null || existing().ownerId == request.auth.uid);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isVerified() && isOwner(userId) && isValidId(userId) && isValidId(lectureId)
+          && isValidLecture(incoming(), userId, lectureId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isVerified() && isOwner(userId) && isValidId(userId) && isValidId(lectureId)
+          && isValidLecture(incoming(), userId, lectureId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().videoId == existing().videoId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['flashcards', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['quizProgress', 'updatedAt']) ||
+            incoming().diff(existing()).affectedKeys().hasOnly(['title', 'studyNotes', 'updatedAt'])
+          );
+        allow delete: if isVerified() && isOwner(userId) && isValidId(userId) && isValidId(lectureId)
+          && existing().ownerId == request.auth.uid;
+
+        match /messages/{messageId} {
+          allow get: if isOwner(userId) && isValidId(userId) && isValidId(lectureId) && isValidId(messageId)
+            && get(/databases/$(database)/documents/users/$(userId)/lectures/$(lectureId)).data.ownerId == request.auth.uid;
+          allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+          allow create: if isVerified() && isOwner(userId) && isValidId(userId) && isValidId(lectureId) && isValidId(messageId)
+            && isValidChatMessage(incoming(), userId, lectureId, messageId)
+            && incoming().createdAt == request.time
+            && get(/databases/$(database)/documents/users/$(userId)/lectures/$(lectureId)).data.ownerId == request.auth.uid;
+          allow update: if false;
+          allow delete: if isVerified() && isOwner(userId) && isValidId(userId) && isValidId(lectureId) && isValidId(messageId)
+            && existing().ownerId == request.auth.uid;
+        }
+      }
+    }
+  }
+}

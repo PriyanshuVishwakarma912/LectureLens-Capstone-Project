@@ -1,0 +1,206 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated learner profile stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email address.",
+          "maxLength": 320
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the learner.",
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional profile avatar URL.",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated."
+        }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "LectureStudyKit": {
+      "title": "LectureStudyKit",
+      "description": "Processed YouTube lecture with transcript segments, structured study notes, flashcards, and graded quiz.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique lecture document identifier.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "videoId": {
+          "type": "string",
+          "description": "11-character YouTube video identifier.",
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "youtubeUrl": {
+          "type": "string",
+          "description": "Canonical YouTube watch URL.",
+          "maxLength": 500
+        },
+        "title": {
+          "type": "string",
+          "description": "Lecture title.",
+          "maxLength": 300
+        },
+        "channelName": {
+          "type": "string",
+          "description": "Creator or channel name.",
+          "maxLength": 200
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "Thumbnail URL for the lecture video.",
+          "maxLength": 500
+        },
+        "sourceType": {
+          "type": "string",
+          "enum": ["youtube_captions", "manual_transcript"],
+          "description": "How the transcript was obtained.",
+          "maxLength": 32
+        },
+        "durationSec": {
+          "type": "integer",
+          "description": "Optional estimated lecture duration in seconds (0 to 172800)."
+        },
+        "transcriptSegments": {
+          "type": "array",
+          "description": "Timestamped transcript segments capped at 800 entries."
+        },
+        "studyNotes": {
+          "type": "object",
+          "description": "Structured executive summary (up to 12000 chars), key takeaways (up to 40), sectioned notes (up to 100), and glossary (up to 100)."
+        },
+        "flashcards": {
+          "type": "array",
+          "description": "Interactive flashcards with mastery statuses capped at 60 items."
+        },
+        "quizQuestions": {
+          "type": "array",
+          "description": "Multiple-choice quiz items capped at 30 items."
+        },
+        "quizProgress": {
+          "type": "object",
+          "description": "Learner quiz attempt history and best score."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when lecture was saved."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when lecture or progress was updated."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "videoId",
+        "youtubeUrl",
+        "title",
+        "channelName",
+        "thumbnailUrl",
+        "sourceType",
+        "transcriptSegments",
+        "studyNotes",
+        "flashcards",
+        "quizQuestions",
+        "quizProgress",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "LectureChatMessage": {
+      "title": "LectureChatMessage",
+      "description": "Single user question or grounded assistant answer in a lecture Q&A thread.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message document identifier.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the lecture owner.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lectureId": {
+          "type": "string",
+          "description": "Parent lecture document ID.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "assistant"],
+          "description": "Author role of the message.",
+          "maxLength": 16
+        },
+        "content": {
+          "type": "string",
+          "description": "Message body text.",
+          "maxLength": 8000
+        },
+        "timestampRefs": {
+          "type": "array",
+          "description": "Referenced timestamps in seconds from the lecture, capped at 12 items."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when message was created."
+        }
+      },
+      "required": ["id", "ownerId", "lectureId", "role", "content", "timestampRefs", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile documents keyed by Firebase Auth UID."
+    },
+    "/users/{userId}/lectures/{lectureId}": {
+      "schema": { "$ref": "#/entities/LectureStudyKit" },
+      "description": "User-owned saved YouTube lecture study kits, flashcards, and quiz progress."
+    },
+    "/users/{userId}/lectures/{lectureId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/LectureChatMessage" },
+      "description": "Append-only Q&A messages grounded in the parent lecture."
+    }
+  }
+}

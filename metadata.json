@@ -1,0 +1,6 @@
+{
+  "name": "LectureLens",
+  "description": "Turn any YouTube lecture into structured study notes, an interactive graded quiz, flashcards, and a grounded Q&A workspace.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
